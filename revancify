@@ -26,7 +26,7 @@ help() {
 \e[1;33m-r, --reinstall   \e[1;34mReinstall revancify\e[0m
 \e[1;33m-h, --help        \e[1;34mPrints help statement\e[0m
 
-\e[1;35mGithub repo: https://github.com/decipher3114/Revancify\nTelegram channel: https://t.me/revancify\nTelegram support group: https://t.me/revancifychat\e[0m"
+\e[1;35mGithub repo: https://github.com/YuzuMikan404/Revancify\nTelegram channel: https://t.me/revancify\nTelegram support group: https://t.me/revancifychat\e[0m"
     exit "$1"
 }
 

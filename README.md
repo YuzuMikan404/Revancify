@@ -34,7 +34,7 @@
 2. Open Termux.
 3. Copy and paste this command.
 ```
-curl -sL "https://raw.githubusercontent.com/decipher3114/Revancify/main/install.sh" | bash
+curl -sL "https://raw.githubusercontent.com/YuzuMikan404/Revancify/main/install.sh" | bash
 ```
 
 <details>

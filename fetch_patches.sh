@@ -5,63 +5,117 @@ storagePath="$3"
 
 patchesJson=$(jq '.' "$source"-patches-*.json)
 
-includedPatches=$(jq '.' "$storagePath/$source-patches.json" 2>/dev/null || jq -n '[]')
+savedJson=$(jq '.' "$storagePath/$source-patches.json" 2>/dev/null || jq -n '[]')
 
-if ! jq -n --argjson includedPatches "$includedPatches" '$includedPatches' > /dev/null 2>&1; then
-    includedPatches=$(jq -n '[]')
+if ! jq -n --argjson savedJson "$savedJson" '$savedJson' > /dev/null 2>&1; then
+    savedJson=$(jq -n '[]')
 fi
 
-allPackages=$(echo "$patchesJson" | jq '[.[].compatiblePackages[].name]')
+allPackages=$(echo "$patchesJson" | jq '[.[].compatiblePackages | if . != null then .[].name else empty end]')
 
 pkgs=$(jq -n --argjson allPackages "$allPackages" '[$allPackages | to_entries[] | .value as $pkg | map($allPackages | to_entries[] | select(.value == $pkg).key)[0] as $index | if $index == .key then $pkg else empty end]')
 
-generatedJson=$(jq --null-input --argjson pkgs "$pkgs" --argjson includedPatches "$includedPatches" --argjson patchesJson "$patchesJson" '
+generatedJson=$(jq --null-input --argjson pkgs "$pkgs" --argjson savedJson "$savedJson" --slurpfile patchesFile "$source"-patches-*.json '
 [
+    $patchesFile[] | . as $patchesJson |
     $pkgs[] | . as $pkgName | 
     {
         "pkgName": .,
         "appName": (
-            if (($includedPatches | length) != 0) then
-                ($includedPatches[] | select(.pkgName == $pkgName) | .appName) // null
+            if (($savedJson | length) != 0) then
+                ($savedJson[] | select(.pkgName == $pkgName) | .appName) // null
             else
                 null
             end
         ),
         "apkmirrorAppName": (
-            if (($includedPatches | length) != 0) then
-                ($includedPatches[] | select(.pkgName == $pkgName) | .apkmirrorAppName) // null
+            if (($savedJson | length) != 0) then
+                ($savedJson[] | select(.pkgName == $pkgName) | .apkmirrorAppName) // null
             else
                 null
             end
         ),
         "developerName": (
-            if (($includedPatches | length) != 0) then
-                ($includedPatches[] | select(.pkgName == $pkgName) | .developerName) // null
+            if (($savedJson | length) != 0) then
+                ($savedJson[] | select(.pkgName == $pkgName) | .developerName) // null
             else
                 null
             end
         ),
         "versions": (
-            [$patchesJson[] | .compatiblePackages |
-                if ((map(.name) | index($pkgName)) != null) then
-                    .[(map(.name) | index($pkgName))].versions[]
+            [
+                $patchesJson[] |
+                .compatiblePackages |
+                if . != null then
+                    if ((map(.name) | index($pkgName)) != null) then
+                        .[(map(.name) | index($pkgName))].versions | if . != null then .[] else empty end
+                    else
+                        empty
+                    end
                 else
                     empty
                 end] |
                 unique
         ),
         "includedPatches": (
-            if (($includedPatches | length) != 0) then
+            if (($savedJson | length) != 0) then
                 [
-                    (($includedPatches[] | select(.pkgName == $pkgName)) |
+                    (
+                        ($savedJson[] | select(.pkgName == $pkgName)) |
                         if ((.includedPatches | length) == 0) then
-                            ($patchesJson[] | .name as $patchName | .excluded as $excluded | .compatiblePackages | if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and ($excluded == false)) then $patchName else empty end)
+                            (
+                                $patchesJson[] |
+                                .name as $patchName |
+                                .use as $use |  
+                                .excluded as $excluded |
+                                .compatiblePackages |
+                                if . != null then
+                                    if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and (($use == true) or ($excluded == false))) then
+                                        $patchName
+                                    else
+                                        empty
+                                    end
+                                else
+                                    empty
+                                end
+                            )
                         else
                             .includedPatches[]
-                        end) // ($patchesJson[] | .name as $patchName | .excluded as $excluded | .compatiblePackages | if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and ($excluded == false)) then $patchName else empty end)
+                        end) //
+                        (
+                            $patchesJson[] |
+                            .name as $patchName |
+                            .use as $use |
+                            .excluded as $excluded |
+                            .compatiblePackages |
+                            if . != null then
+                                if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and (($use == true) or ($excluded == false))) then
+                                    $patchName
+                                else
+                                    empty
+                                end
+                            else
+                                empty
+                            end
+                        )
                 ]
             else
-                [($patchesJson[] | .name as $patchName | .excluded as $excluded | .compatiblePackages | if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and ($excluded == false)) then $patchName else empty end)]
+                [(
+                    $patchesJson[] |
+                    .name as $patchName |
+                    .use as $use |
+                    .excluded as $excluded |
+                    .compatiblePackages |
+                    if . != null then
+                        if ((((map(.name) | index($pkgName)) != null) or (length == 0)) and (($use == true) or ($excluded == false))) then
+                            $patchName
+                        else
+                            empty
+                        end
+                    else
+                        empty
+                    end
+                )]
             end
         )
     }
@@ -81,7 +135,7 @@ if [ "$2" == "online" ]; then
                 ({
                     "key": (.pname),
                     "value": {
-                        "appName": (.app.name | sub("\\s\\(.*\\)"; ""; "x") | sub("&amp;"; "") | sub("[^0-9a-zA-Z]+"; "-"; "sg")),
+                        "appName": (.app.name | sub("( -)|( &amp;)|:"; ""; "g") | sub("[()\\|]"; ""; "g") | sub(" *[-, ] *"; "-"; "g") | sub("-Wear-OS"; ""; "g")),
                         "apkmirrorAppName": (.app.link | sub("-wear-os"; "") | match("(?<=\\/)(((?!\\/).)*)(?=\\/$)").string),
                         "developerName": (.app.link | match("(?<=apk\\/).*?(?=\\/)").string)
                     }
@@ -95,8 +149,7 @@ if [ "$2" == "online" ]; then
     fi
     generatedJson=$(
         jq -n --argjson generatedJson "$generatedJson" --argjson responseJson "$responseJson" '[
-                $generatedJson[] | .pkgName as $pkgName | (.appName = ($responseJson[$pkgName].appName)) | (.apkmirrorAppName = ($responseJson[$pkgName].apkmirrorAppName)) | (.developerName = ($responseJson[$pkgName].developerName))]'
-    )
+                $generatedJson[] | .pkgName as $pkgName | (.appName = ($responseJson[$pkgName].appName)) | (.apkmirrorAppName = ($responseJson[$pkgName].apkmirrorAppName)) | (.developerName = ($responseJson[$pkgName].developerName))]' 2>/dev/null || { echo error && exit 1 ;})
 fi
 
 echo "$generatedJson" | jq '.' >"$storagePath/$source-patches.json"

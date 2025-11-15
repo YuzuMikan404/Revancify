@@ -1,6 +1,6 @@
 #!/bin/bash
 
-UserAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+UserAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 appName="$1"
 apkmirrorAppName="$2"
@@ -12,7 +12,7 @@ page1=$(curl --fail-early --connect-timeout 2 --max-time 5 -sL -A "$UserAgent" "
 
 [ "$page1" == "" ] && echo error && exit 1
 
-readarray -t versions < <(./pup -p 'div.widget_appmanager_recentpostswidget h5 a.fontBlack text{}' <<<"$page1")
+readarray -t versions < <(pup -p 'div.widget_appmanager_recentpostswidget h5 a.fontBlack text{}' <<<"$page1")
 
 supportedVers=$(jq -r --arg apkmirrorAppName "$apkmirrorAppName" '[.[] | select(.apkmirrorAppName == $apkmirrorAppName).versions[] | sub(" *[-, ] *"; "-"; "g")]' "$storagePath/$patchesSource-patches.json")
 
@@ -23,8 +23,9 @@ jq -r -n --arg appName "$appName-"\
     [
         [
             $ARGS.positional[] |
+            sub("( -)|( &)"; ""; "g") |
+            sub("[()\\|]"; ""; "g") |
             sub(" *[-, ] *"; "-"; "g") |
-            sub(":"; "") |
             sub($appName; "")
         ] |
         . |= . + $supportedVers |
@@ -37,7 +38,7 @@ jq -r -n --arg appName "$appName-"\
             .[0:($index + 1)][]
         end | . as $version |
         if (($supportedVers | index($version)) != null) then
-            $version, "[SUPPORTED]"
+            $version, "[RECOMMENDED]"
         elif ($version | test("beta|Beta|BETA")) then
             $version | sub("(?<=[0-9])-[a-zA-Z]*$"; ""), "[BETA]"
         elif ($version | test("alpha|Alpha|ALPHA")) then
@@ -51,7 +52,7 @@ jq -r -n --arg appName "$appName-"\
     else
         .
     end |
-     if ((. | index("[SUPPORTED]")) != null) then
+     if ((. | index("[RECOMMENDED]")) != null) then
         . |= ["Auto Select", "[RECOMMENDED]"] + .
     else
         .
